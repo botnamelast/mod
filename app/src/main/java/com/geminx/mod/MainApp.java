@@ -26,7 +26,6 @@ public class MainApp extends Activity {
     private static final int C_MUTED   = Color.parseColor("#64748B");
 
     private TextView tvModStatus;
-    private TextView tvOverlayStatus;
     private TextView btnActivate;
 
     @Override
@@ -94,12 +93,6 @@ public class MainApp extends Activity {
 
                 // Overlay permission
                 boolean hasOverlay = hasOverlayPermission();
-                tvOverlayStatus = (TextView) ((LinearLayout) makeStatusRow(
-                    "Izin Overlay",
-                    hasOverlay ? "Diberikan" : "Belum Diberikan",
-                    hasOverlay ? C_GREEN : C_MUTED
-                ).getChildAt(1));
-
                 card.addView(makeStatusRow(
                     "Izin Overlay",
                     hasOverlay ? "Diberikan" : "Belum Diberikan",

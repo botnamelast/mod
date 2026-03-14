@@ -43,7 +43,7 @@ public class ModOverlay extends Service {
     // Items page
     private LinearLayout itemListContainer;
     private String currentCategory = "";
-    private final Map<String, int[][]> categoryMap = new LinkedHashMap<>();
+    private final Map<String, Object[][]> categoryMap = new LinkedHashMap<>();
 
     @Override
     public void onCreate() {
@@ -302,7 +302,7 @@ public class ModOverlay extends Service {
         tvPageTitle.setText(cat);
         itemListContainer.removeAllViews();
 
-        int[][] items = categoryMap.get(cat);
+        Object[][] items = categoryMap.get(cat);
         if (items == null) return;
 
         // Header row
@@ -314,8 +314,8 @@ public class ModOverlay extends Service {
         itemListContainer.addView(header);
         itemListContainer.addView(makeDivider());
 
-        for (int[] item : items) {
-            itemListContainer.addView(makeItemRow(item[0], (String) ((Object[])item)[1]));
+        for (Object[] item : items) {
+            itemListContainer.addView(makeItemRow((int) item[0], (String) item[1]));
         }
 
         pageMain.setVisibility(View.GONE);
@@ -544,4 +544,68 @@ public class ModOverlay extends Service {
         GradientDrawable gd = new GradientDrawable();
         gd.setColor(color);
         gd.setCornerRadius(radius);
-        return
+        return gd;
+    }
+
+    private Drawable makeDividerBg() {
+        LayerDrawable ld = new LayerDrawable(new Drawable[]{
+            new ColorDrawable(Color.TRANSPARENT)
+        });
+        return ld;
+    }
+
+    // ── DRAG ──────────────────────────────────────────────────────────────────
+    private void setupDrag(View header) {
+        final int[] lastX = {0}, lastY = {0};
+        final boolean[] dragging = {false};
+        header.setOnTouchListener((v, e) -> {
+            switch (e.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    lastX[0] = (int) e.getRawX();
+                    lastY[0] = (int) e.getRawY();
+                    dragging[0] = false;
+                    break;
+                case MotionEvent.ACTION_MOVE:
+                    int dx = (int) e.getRawX() - lastX[0];
+                    int dy = (int) e.getRawY() - lastY[0];
+                    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragging[0] = true;
+                    params.x += dx;
+                    params.y += dy;
+                    lastX[0] = (int) e.getRawX();
+                    lastY[0] = (int) e.getRawY();
+                    wm.updateViewLayout(root, params);
+                    break;
+            }
+            return dragging[0];
+        });
+    }
+
+    // ── WINDOW PARAMS ─────────────────────────────────────────────────────────
+    private WindowManager.LayoutParams makeParams() {
+        int type = Build.VERSION.SDK_INT >= 26
+            ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            : WindowManager.LayoutParams.TYPE_PHONE;
+        WindowManager.LayoutParams p = new WindowManager.LayoutParams(
+            dp(300), WindowManager.LayoutParams.WRAP_CONTENT,
+            type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        );
+        p.gravity = Gravity.TOP | Gravity.START;
+        p.x = 20; p.y = 120;
+        return p;
+    }
+
+    private int dp(int val) {
+        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, val,
+            getResources().getDisplayMetrics());
+    }
+
+    @Override public IBinder onBind(Intent i) { return null; }
+
+    @Override
+    public void onDestroy() {
+        if (root != null) wm.removeView(root);
+        super.onDestroy();
+    }
+}

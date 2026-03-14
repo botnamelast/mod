@@ -28,13 +28,17 @@ jobs:
       - name: Sign APK
         run: |
           echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > mod.keystore
+          $ANDROID_SDK_ROOT/build-tools/34.0.0/zipalign \
+            -v -p 4 \
+            app/build/outputs/apk/release/app-release-unsigned.apk \
+            app-aligned.apk
           $ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner sign \
             --ks mod.keystore \
             --ks-pass pass:${{ secrets.KEYSTORE_PASS }} \
             --ks-key-alias ${{ secrets.KEY_ALIAS }} \
             --key-pass pass:${{ secrets.KEYSTORE_PASS }} \
             --out GeminX-signed.apk \
-            app/build/outputs/apk/release/app-release-unsigned.apk
+            app-aligned.apk
           ls -lh GeminX-signed.apk
 
       - name: Upload APK

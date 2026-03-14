@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+
+    <application
+        android:label="GeminX Mod"
+        android:allowBackup="false">
+
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true"/>
+        <meta-data
+            android:name="xposeddescription"
+            android:value="GeminX - Settlement Survival Mod Menu"/>
+        <meta-data
+            android:name="xposedminversion"
+            android:value="82"/>
+        <meta-data
+            android:name="xposedscope"
+            android:value="com.xd.SettlementSurvival.gp.global"/>
+
+        <activity
+            android:name=".MainApp"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".ModOverlay"
+            android:enabled="true"
+            android:exported="false"/>
+
+    </application>
+
+</manifest>

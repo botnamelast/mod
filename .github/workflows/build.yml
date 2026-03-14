@@ -2,8 +2,6 @@ name: Build GeminX Mod APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 jobs:
   build:
@@ -37,7 +35,6 @@ jobs:
             --key-pass pass:${{ secrets.KEYSTORE_PASS }} \
             --out GeminX-signed.apk \
             app/build/outputs/apk/release/app-release-unsigned.apk
-          echo "=== APK signed ==="
           ls -lh GeminX-signed.apk
 
       - name: Upload APK

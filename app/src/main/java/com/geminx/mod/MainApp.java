@@ -246,7 +246,6 @@ public class MainApp extends Activity {
         return Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(this);
     }
 
-    private Activity MainApp.this { return this; }
 
     private void toast(String msg) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();

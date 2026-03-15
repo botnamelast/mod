@@ -7,6 +7,7 @@ import android.util.Log;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XC_MethodReplacement;
+import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
@@ -172,7 +173,7 @@ public class HookEntry implements IXposedHookLoadPackage {
                 for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
                     if (m.getReturnType() == boolean.class) {
                         try {
-                            XposedHelpers.hookMethod(m, new XC_MethodReplacement() {
+                            XposedBridge.hookMethod(m, new XC_MethodReplacement() {
                                 @Override
                                 protected Object replaceHookedMethod(MethodHookParam param) {
                                     Log.i(TAG, "Pairip boolean method hooked: " + param.method.getName() + " → true");

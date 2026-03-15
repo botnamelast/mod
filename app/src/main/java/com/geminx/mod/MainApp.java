@@ -33,7 +33,6 @@ public class MainApp extends Activity {
         super.onCreate(savedInstanceState);
         getWindow().getDecorView().setBackgroundColor(C_BG);
 
-        // Hide action bar
         if (getActionBar() != null) getActionBar().hide();
 
         ScrollView scroll = new ScrollView(this);
@@ -77,71 +76,58 @@ public class MainApp extends Activity {
         root.addView(vspace(24));
 
         // ── Status Card ───────────────────────────────────────────────────────
-        root.addView(makeCard(new CardBuilder() {
-            @Override public void build(LinearLayout card) {
-                card.addView(makeLabel("STATUS"));
-                card.addView(vspace(10));
+        root.addView(makeCard(card -> {
+            card.addView(makeLabel("STATUS"));
+            card.addView(vspace(10));
 
-                // LSPosed status
-                LinearLayout rowLsp = makeStatusRow(
-                    "LSPosed Module",
-                    isModuleActive() ? "Aktif" : "Tidak Aktif",
-                    isModuleActive() ? C_GREEN : C_RED
-                );
-                card.addView(rowLsp);
-                card.addView(vspace(8));
+            boolean modActive = isModuleActive();
+            card.addView(makeStatusRow(
+                "LSPosed Module",
+                modActive ? "Aktif" : "Tidak Aktif",
+                modActive ? C_GREEN : C_RED
+            ));
+            card.addView(vspace(8));
 
-                // Overlay permission
-                boolean hasOverlay = hasOverlayPermission();
-                card.addView(makeStatusRow(
-                    "Izin Overlay",
-                    hasOverlay ? "Diberikan" : "Belum Diberikan",
-                    hasOverlay ? C_GREEN : C_MUTED
-                ));
-                card.addView(vspace(8));
+            boolean hasOverlay = hasOverlayPermission();
+            card.addView(makeStatusRow(
+                "Izin Overlay",
+                hasOverlay ? "Diberikan" : "Belum Diberikan",
+                hasOverlay ? C_GREEN : C_MUTED
+            ));
+            card.addView(vspace(8));
 
-                // Target game
-                card.addView(makeStatusRow(
-                    "Target Game",
-                    "Settlement Survival",
-                    C_ACCENT
-                ));
-            }
+            card.addView(makeStatusRow(
+                "Target Game",
+                "Settlement Survival",
+                C_ACCENT
+            ));
         }));
         root.addView(vspace(14));
 
         // ── Mod Status ────────────────────────────────────────────────────────
-        root.addView(makeCard(new CardBuilder() {
-            @Override public void build(LinearLayout card) {
-                card.addView(makeLabel("MOD"));
-                card.addView(vspace(10));
+        root.addView(makeCard(card -> {
+            card.addView(makeLabel("MOD"));
+            card.addView(vspace(10));
 
-                tvModStatus = new TextView(MainApp.this);
-                tvModStatus.setText(isModuleActive()
-                    ? "● Mod siap digunakan"
-                    : "⚠ Aktifkan module di LSPosed Manager");
-                tvModStatus.setTextColor(isModuleActive() ? C_GREEN : C_ACCENT);
-                tvModStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-                card.addView(tvModStatus);
+            tvModStatus = new TextView(this);
+            updateModStatus();
+            card.addView(tvModStatus);
 
-                if (!isModuleActive()) {
-                    card.addView(vspace(6));
-                    TextView hint = new TextView(MainApp.this);
-                    hint.setText("1. Buka LSPosed Manager\n2. Pilih module GeminX\n3. Centang Settlement Survival\n4. Reboot atau Force Stop game");
-                    hint.setTextColor(C_MUTED);
-                    hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-                    hint.setLineSpacing(dp(2), 1f);
-                    card.addView(hint);
-                }
+            if (!isModuleActive()) {
+                card.addView(vspace(6));
+                TextView hint = new TextView(this);
+                hint.setText("1. Buka LSPosed Manager\n2. Pilih module GeminX\n3. Centang Settlement Survival\n4. Reboot atau Force Stop game");
+                hint.setTextColor(C_MUTED);
+                hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                hint.setLineSpacing(dp(2), 1f);
+                card.addView(hint);
             }
         }));
         root.addView(vspace(14));
 
         // ── Tombol Aktifkan ───────────────────────────────────────────────────
         btnActivate = new TextView(this);
-        btnActivate.setText(hasOverlayPermission()
-            ? "▶  AKTIFKAN MOD MENU"
-            : "⚙  MINTA IZIN OVERLAY");
+        updateActivateBtn();
         btnActivate.setTextColor(Color.BLACK);
         btnActivate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         btnActivate.setTypeface(Typeface.DEFAULT_BOLD);
@@ -168,35 +154,47 @@ public class MainApp extends Activity {
         root.addView(vspace(24));
 
         // ── Info ──────────────────────────────────────────────────────────────
-        root.addView(makeCard(new CardBuilder() {
-            @Override public void build(LinearLayout card) {
-                card.addView(makeLabel("INFO"));
-                card.addView(vspace(8));
-                card.addView(makeInfoRow("Versi Mod",    "1.0.0"));
-                card.addView(vspace(6));
-                card.addView(makeInfoRow("Target",       "Settlement Survival"));
-                card.addView(vspace(6));
-                card.addView(makeInfoRow("Package",      "com.xd.SettlementSurvival.gp.global"));
-                card.addView(vspace(6));
-                card.addView(makeInfoRow("Framework",    "LSPosed / Zygisk"));
-            }
+        root.addView(makeCard(card -> {
+            card.addView(makeLabel("INFO"));
+            card.addView(vspace(8));
+            card.addView(makeInfoRow("Versi Mod",    "1.0.0"));
+            card.addView(vspace(6));
+            card.addView(makeInfoRow("Target",       "Settlement Survival"));
+            card.addView(vspace(6));
+            card.addView(makeInfoRow("Package",      "com.xd.SettlementSurvival.gp.global"));
+            card.addView(vspace(6));
+            card.addView(makeInfoRow("Framework",    "LSPosed / Zygisk"));
         }));
 
         scroll.addView(root);
         setContentView(scroll);
     }
 
+    private void updateModStatus() {
+        if (tvModStatus == null) return;
+        boolean active = isModuleActive();
+        tvModStatus.setText(active
+            ? "● Mod siap digunakan"
+            : "⚠ Aktifkan module di LSPosed Manager");
+        tvModStatus.setTextColor(active ? C_GREEN : C_ACCENT);
+        tvModStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+    }
+
+    private void updateActivateBtn() {
+        if (btnActivate == null) return;
+        btnActivate.setText(hasOverlayPermission()
+            ? "▶  AKTIFKAN MOD MENU"
+            : "⚙  MINTA IZIN OVERLAY");
+    }
+
     private void onActivateClick() {
         if (!hasOverlayPermission()) {
-            // Minta izin overlay
             Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:" + getPackageName()));
             startActivityForResult(i, REQ_OVERLAY);
         } else {
-            // Start overlay service
             startService(new Intent(this, ModOverlay.class));
             toast("Mod Menu diaktifkan — buka game sekarang!");
-            // Minimize app
             moveTaskToBack(true);
         }
     }
@@ -206,39 +204,33 @@ public class MainApp extends Activity {
         super.onActivityResult(req, res, data);
         if (req == REQ_OVERLAY) {
             boolean granted = hasOverlayPermission();
-            btnActivate.setText(granted ? "▶  AKTIFKAN MOD MENU" : "⚙  MINTA IZIN OVERLAY");
+            updateActivateBtn();
             if (granted) toast("Izin diberikan! Tekan tombol untuk aktifkan.");
+            else toast("Izin ditolak. Coba aktifkan manual di Settings.");
         }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // Refresh status
-        if (tvModStatus != null) {
-            tvModStatus.setText(isModuleActive()
-                ? "● Mod siap digunakan"
-                : "⚠ Aktifkan module di LSPosed Manager");
-            tvModStatus.setTextColor(isModuleActive() ? C_GREEN : C_ACCENT);
-        }
-        if (btnActivate != null) {
-            btnActivate.setText(hasOverlayPermission()
-                ? "▶  AKTIFKAN MOD MENU"
-                : "⚙  MINTA IZIN OVERLAY");
-        }
+        updateModStatus();
+        updateActivateBtn();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /** Deteksi module aktif — kalau HookEntry sudah inject, field ini true */
+    /**
+     * Default return false.
+     * Ketika LSPosed aktif, HookEntry akan hook method ini dan return true.
+     * Ini adalah pola standar deteksi modul Xposed.
+     */
     private boolean isModuleActive() {
-        return false; // default false; HookEntry akan override via reflection trick
+        return false;
     }
 
     private boolean hasOverlayPermission() {
         return Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(this);
     }
-
 
     private void toast(String msg) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();

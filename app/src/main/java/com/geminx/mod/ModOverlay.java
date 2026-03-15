@@ -1,6 +1,9 @@
 package com.geminx.mod;
 
 import android.animation.ValueAnimator;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
 import android.graphics.*;
@@ -49,8 +52,26 @@ public class ModOverlay extends Service {
     public void onCreate() {
         super.onCreate();
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+        startForegroundNotification();
         buildCategoryMap();
         buildUI();
+    }
+
+    private void startForegroundNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                "geminx_mod", "GeminX Mod",
+                NotificationManager.IMPORTANCE_MIN);
+            channel.setShowBadge(false);
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) nm.createNotificationChannel(channel);
+
+            Notification notif = new Notification.Builder(this, "geminx_mod")
+                .setContentTitle("GeminX Mod Aktif")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .build();
+            startForeground(1, notif);
+        }
     }
 
     private void buildCategoryMap() {
@@ -588,7 +609,8 @@ public class ModOverlay extends Service {
         WindowManager.LayoutParams p = new WindowManager.LayoutParams(
             dp(300), WindowManager.LayoutParams.WRAP_CONTENT,
             type,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         );
         p.gravity = Gravity.TOP | Gravity.START;

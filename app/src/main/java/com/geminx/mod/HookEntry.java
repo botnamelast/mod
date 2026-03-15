@@ -6,21 +6,15 @@ import android.util.Log;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XC_MethodReplacement;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class HookEntry implements IXposedHookLoadPackage {
 
     private static final String TAG        = "GeminX";
-    private static final String TARGET_PKG = "com.xd.SettlementSurvival.gp.global"; // sesuaikan package game
-
-    // ── Class names dari script.json ──────────────────────────────────────────
-    // CollectAttr$$collectItem      → RVA 0xD22238
-    // ArchivePart2$$collectItem1010 → RVA 0xD222DC
-    // CC$$addItemC3                 → RVA 0xD252AC
-    // GameData$$SetGameSpeed        → RVA 0xE59CC0
-    // CoinMgr$$AddCoin              → RVA 0xDAB6A0
-    // CoinMgr$$AddCoinForce         → RVA 0xDAB790
+    private static final String TARGET_PKG = "com.xd.SettlementSurvival.gp.global";
+    private static final String MOD_PKG    = "com.geminx.mod";
 
     private static Class<?> clsCollectAttr  = null;
     private static Class<?> clsArchivePart2 = null;
@@ -29,14 +23,18 @@ public class HookEntry implements IXposedHookLoadPackage {
     private static Class<?> clsCoinMgr      = null;
 
     private static boolean hooksReady = false;
-
-    // Dibaca MainApp untuk deteksi module aktif
-    public static boolean moduleActive = false;
     private static final java.util.Queue<Runnable> pending = new java.util.LinkedList<>();
 
     // ── Entry point ───────────────────────────────────────────────────────────
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpp) {
+
+        // Fix 2: Hook isModuleActive() di app modul sendiri → return true
+        if (lpp.packageName.equals(MOD_PKG)) {
+            hookModuleActive(lpp.classLoader);
+            return;
+        }
+
         if (!lpp.packageName.equals(TARGET_PKG)) return;
         Log.i(TAG, "Target loaded: " + TARGET_PKG);
 
@@ -48,11 +46,31 @@ public class HookEntry implements IXposedHookLoadPackage {
         }
     }
 
-    private void hookPairip(ClassLoader cl) {
-        // Strategy: Hook System.loadLibrary untuk intercept saat
-        // libpairipcore.so di-load, lalu patch JNI_OnLoad / ExecuteProgram
+    // ── Fix 2: Hook isModuleActive ────────────────────────────────────────────
+    private void hookModuleActive(ClassLoader cl) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                "com.geminx.mod.MainApp", cl,
+                "isModuleActive",
+                new XC_MethodReplacement() {
+                    @Override
+                    protected Object replaceHookedMethod(MethodHookParam param) {
+                        return true;
+                    }
+                }
+            );
+            Log.i(TAG, "isModuleActive hook installed");
+        } catch (Throwable t) {
+            Log.e(TAG, "isModuleActive hook failed: " + t.getMessage());
+        }
+    }
 
-        // Hook 1: Runtime.loadLibrary0 — dipanggil saat System.loadLibrary
+    // ── Pairip bypass ─────────────────────────────────────────────────────────
+    private void hookPairip(ClassLoader cl) {
+
+        // Hook 1: Runtime.loadLibrary0 — intercept saat System.loadLibrary dipanggil
+        // Catatan: ini mungkin tidak menangkap libpairipcore.so karena dimuat via
+        // native namespace, tapi tetap kita pasang sebagai lapisan pertama
         try {
             XposedHelpers.findAndHookMethod(
                 "java.lang.Runtime", cl,
@@ -63,16 +81,15 @@ public class HookEntry implements IXposedHookLoadPackage {
                     protected void beforeHookedMethod(MethodHookParam param) {
                         String libName = (String) param.args[1];
                         if (libName != null && libName.contains("pairipcore")) {
-                            // Block load library Pairip
                             param.setResult(null);
-                            Log.i(TAG, "Pairip loadLibrary BLOCKED: " + libName);
+                            Log.i(TAG, "Pairip loadLibrary0 BLOCKED: " + libName);
                         }
                     }
                 }
             );
-            Log.i(TAG, "loadLibrary hook installed");
+            Log.i(TAG, "loadLibrary0 hook installed");
         } catch (Throwable t) {
-            Log.e(TAG, "loadLibrary hook failed: " + t.getMessage());
+            Log.e(TAG, "loadLibrary0 hook failed: " + t.getMessage());
         }
 
         // Hook 2: System.load (full path)
@@ -91,55 +108,107 @@ public class HookEntry implements IXposedHookLoadPackage {
                     }
                 }
             );
+            Log.i(TAG, "System.load hook installed");
         } catch (Throwable t) {
             Log.e(TAG, "System.load hook failed: " + t.getMessage());
         }
 
-        // Hook 3: com.pairip.application.Application - block onCreate & attachBaseContext
+        // Hook 3: com.pairip.application.Application
+        // Block attachBaseContext agar Pairip tidak sempat init sama sekali
         try {
             XposedHelpers.findAndHookMethod(
                 "com.pairip.application.Application", cl,
                 "attachBaseContext", android.content.Context.class,
-                new XC_MethodHook() {
+                new XC_MethodReplacement() {
                     @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        param.setResult(null);
-                        Log.i(TAG, "Pairip attachBaseContext BLOCKED");
+                    protected Object replaceHookedMethod(MethodHookParam param) {
+                        Log.i(TAG, "Pairip attachBaseContext REPLACED (no-op)");
+                        // Panggil super Application.attachBaseContext agar app tidak crash
+                        try {
+                            XposedHelpers.callMethod(param.thisObject,
+                                "superAttachBaseContext", param.args[0]);
+                        } catch (Throwable ignored) {
+                            // fallback: skip saja
+                        }
+                        return null;
                     }
                 }
             );
+            Log.i(TAG, "Pairip attachBaseContext hook installed");
+        } catch (Throwable t) {
+            Log.e(TAG, "Pairip attachBaseContext hook failed: " + t.getMessage());
+        }
+
+        try {
             XposedHelpers.findAndHookMethod(
                 "com.pairip.application.Application", cl,
                 "onCreate",
-                new XC_MethodHook() {
+                new XC_MethodReplacement() {
                     @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        param.setResult(null);
-                        Log.i(TAG, "Pairip onCreate BLOCKED");
+                    protected Object replaceHookedMethod(MethodHookParam param) {
+                        Log.i(TAG, "Pairip onCreate REPLACED (no-op)");
+                        return null;
                     }
                 }
             );
+            Log.i(TAG, "Pairip onCreate hook installed");
         } catch (Throwable t) {
-            Log.e(TAG, "Pairip Application hook failed: " + t.getMessage());
+            Log.e(TAG, "Pairip onCreate hook failed: " + t.getMessage());
+        }
+
+        // Hook 4: Coba hook class-class Pairip lain yang mungkin ada
+        // com.pairip.PackageVerifier atau sejenisnya
+        String[] pairipClasses = {
+            "com.pairip.PackageVerifier",
+            "com.pairip.LicenseVerifier",
+            "com.pairip.Verifier",
+            "com.pairip.PairipCore"
+        };
+        for (String cls : pairipClasses) {
+            try {
+                Class<?> c = XposedHelpers.findClass(cls, cl);
+                Log.i(TAG, "Found Pairip class: " + cls);
+                // Kalau ketemu, coba hook semua method yang return boolean
+                for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+                    if (m.getReturnType() == boolean.class) {
+                        try {
+                            XposedHelpers.hookMethod(m, new XC_MethodReplacement() {
+                                @Override
+                                protected Object replaceHookedMethod(MethodHookParam param) {
+                                    Log.i(TAG, "Pairip boolean method hooked: " + param.method.getName() + " → true");
+                                    return true;
+                                }
+                            });
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            } catch (Throwable ignored) {
+                // Class tidak ada, lanjut
+            }
         }
 
         Log.i(TAG, "All Pairip hooks installed");
     }
 
+    // ── Game hooks ────────────────────────────────────────────────────────────
     private void hookInit(ClassLoader cl) {
-        // Hook GameData.SetGameSpeed sebagai trigger game loaded
-        XposedHelpers.findAndHookMethod(
-            "GameData", cl, "SetGameSpeed", int.class,
-            new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                    if (!hooksReady) {
-                        initClasses(cl);
-                        startOverlay(param.thisObject);
+        try {
+            XposedHelpers.findAndHookMethod(
+                "GameData", cl, "SetGameSpeed", int.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!hooksReady) {
+                            initClasses(cl);
+                            startOverlay(param.thisObject);
+                        }
                     }
                 }
-            }
-        );
+            );
+            Log.i(TAG, "GameData.SetGameSpeed hook installed");
+        } catch (Throwable t) {
+            Log.e(TAG, "hookInit failed: " + t.getMessage());
+        }
     }
 
     private void initClasses(ClassLoader cl) {
@@ -151,7 +220,6 @@ public class HookEntry implements IXposedHookLoadPackage {
             clsCoinMgr      = XposedHelpers.findClass("CoinMgr",      cl);
 
             hooksReady = true;
-            moduleActive = true;
             Log.i(TAG, "All classes loaded!");
 
             while (!pending.isEmpty()) pending.poll().run();
@@ -166,16 +234,14 @@ public class HookEntry implements IXposedHookLoadPackage {
             Context context = (Context) ctx;
             Intent i = new Intent(context, ModOverlay.class);
             context.startService(i);
+            Log.i(TAG, "Overlay service started");
         } catch (Throwable t) {
             Log.e(TAG, "startOverlay failed", t);
         }
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    //  PUBLIC API — dipanggil dari ModOverlay
-    // ═════════════════════════════════════════════════════════════════════════
+    // ── Public API ────────────────────────────────────────────────────────────
 
-    /** Tambah item. Coba collectItem dulu, fallback ke addItemC3 */
     public static void collectItem(int id, int num) {
         if (!hooksReady) { pending.add(() -> collectItem(id, num)); return; }
         try {
@@ -191,14 +257,12 @@ public class HookEntry implements IXposedHookLoadPackage {
         }
     }
 
-    /** Tambah item batch (untuk apply all items sekaligus) */
     public static void collectItems(int[][] items) {
         for (int[] item : items) {
             if (item[1] > 0) collectItem(item[0], item[1]);
         }
     }
 
-    /** Tambah koin */
     public static void addCoin(int amount) {
         if (!hooksReady) { pending.add(() -> addCoin(amount)); return; }
         try {
@@ -209,7 +273,6 @@ public class HookEntry implements IXposedHookLoadPackage {
         }
     }
 
-    /** Baca koin saat ini */
     public static int getCoin() {
         if (!hooksReady || clsCoinMgr == null) return -1;
         try {
@@ -217,16 +280,12 @@ public class HookEntry implements IXposedHookLoadPackage {
         } catch (Throwable t) { return -1; }
     }
 
-    /** Set game speed
-     *  speed 1-5 → pakai GameData.SetGameSpeed (native)
-     *  speed 6-10 → bypass limit via UnityEngine.Time.timeScale */
     public static void setGameSpeed(int speed) {
         if (!hooksReady) { pending.add(() -> setGameSpeed(speed)); return; }
         try {
             if (speed <= 5) {
                 XposedHelpers.callStaticMethod(clsGameData, "SetGameSpeed", speed);
             } else {
-                // Bypass game limit — set timeScale langsung
                 Class<?> clsTime = XposedHelpers.findClass("UnityEngine.Time", null);
                 XposedHelpers.callStaticMethod(clsTime, "set_timeScale", (float) speed);
             }
@@ -236,7 +295,6 @@ public class HookEntry implements IXposedHookLoadPackage {
         }
     }
 
-    /** Pause / unpause game */
     public static void setGamePause(boolean pause) {
         if (!hooksReady) return;
         try {

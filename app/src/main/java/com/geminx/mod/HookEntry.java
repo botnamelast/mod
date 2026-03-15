@@ -29,6 +29,9 @@ public class HookEntry implements IXposedHookLoadPackage {
     private static Class<?> clsCoinMgr      = null;
 
     private static boolean hooksReady = false;
+
+    // Dibaca MainApp untuk deteksi module aktif
+    public static boolean moduleActive = false;
     private static final java.util.Queue<Runnable> pending = new java.util.LinkedList<>();
 
     // ── Entry point ───────────────────────────────────────────────────────────
@@ -38,9 +41,52 @@ public class HookEntry implements IXposedHookLoadPackage {
         Log.i(TAG, "Target loaded: " + TARGET_PKG);
 
         try {
+            hookPairip(lpp.classLoader);
             hookInit(lpp.classLoader);
         } catch (Throwable t) {
             Log.e(TAG, "handleLoadPackage error", t);
+        }
+    }
+
+    private void hookPairip(ClassLoader cl) {
+        // Hook com.pairip.application.Application.onCreate
+        // Ini mencegah Pairip init sebelum scan dimulai
+        try {
+            XposedHelpers.findAndHookMethod(
+                "com.pairip.application.Application",
+                cl,
+                "onCreate",
+                new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        // Skip Pairip init — langsung return
+                        param.setResult(null);
+                        Log.i(TAG, "Pairip onCreate blocked!");
+                    }
+                }
+            );
+            Log.i(TAG, "Pairip hook installed");
+        } catch (Throwable t) {
+            Log.e(TAG, "Pairip hook failed: " + t.getMessage());
+        }
+
+        // Hook attachBaseContext juga untuk double protection
+        try {
+            XposedHelpers.findAndHookMethod(
+                "com.pairip.application.Application",
+                cl,
+                "attachBaseContext",
+                android.content.Context.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        param.setResult(null);
+                        Log.i(TAG, "Pairip attachBaseContext blocked!");
+                    }
+                }
+            );
+        } catch (Throwable t) {
+            Log.e(TAG, "Pairip attachBaseContext hook failed: " + t.getMessage());
         }
     }
 
@@ -69,6 +115,7 @@ public class HookEntry implements IXposedHookLoadPackage {
             clsCoinMgr      = XposedHelpers.findClass("CoinMgr",      cl);
 
             hooksReady = true;
+            moduleActive = true;
             Log.i(TAG, "All classes loaded!");
 
             while (!pending.isEmpty()) pending.poll().run();

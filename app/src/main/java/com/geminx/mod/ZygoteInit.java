@@ -4,9 +4,7 @@ import android.util.Log;
 
 import de.robv.android.xposed.IXposedHookZygoteInit;
 import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XC_MethodReplacement;
 import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
 
 import java.lang.reflect.Method;
 
@@ -17,14 +15,14 @@ public class ZygoteInit implements IXposedHookZygoteInit {
 
     @Override
     public void initZygote(StartupParam startupParam) {
-        Log.i(TAG, "initZygote called — hooking native load early");
+        Log.i(TAG, "initZygote called — hooking nativeLoad early");
 
-        // Hook Runtime.nativeLoad — ini dipanggil untuk SEMUA library loading
-        // termasuk yang via native namespace (clns-9), jauh lebih dalam dari loadLibrary0
+        // PENTING: initZygote berjalan di Zygote process yang di-share semua app.
+        // JANGAN hook System.loadLibrary atau loadLibrary0 di sini karena akan
+        // mempengaruhi semua app dan bisa crash system!
+        // Satu-satunya yang aman adalah hook Runtime.nativeLoad dengan filter KETAT.
+
         try {
-            // nativeLoad adalah native method di java.lang.Runtime
-            // signature: private static native String nativeLoad(
-            //     String filename, ClassLoader loader, Class<?> caller)
             Method nativeLoad = null;
             for (Method m : Runtime.class.getDeclaredMethods()) {
                 if (m.getName().equals("nativeLoad")) {
@@ -39,68 +37,23 @@ public class ZygoteInit implements IXposedHookZygoteInit {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
                         String filename = (String) param.args[0];
-                        if (filename != null && filename.contains("pairipcore")) {
+                        // Filter SANGAT KETAT — hanya block pairipcore di package target
+                        if (filename != null
+                                && filename.contains("pairipcore")
+                                && filename.contains(TARGET_PKG.replace(".", "/"))) {
                             Log.i(TAG, "nativeLoad BLOCKED: " + filename);
-                            // Return null = sukses tanpa error (nativeLoad return String error msg)
+                            // nativeLoad return String: null = sukses, string = error msg
                             param.setResult(null);
                         }
                     }
                 });
-                Log.i(TAG, "Runtime.nativeLoad hook installed");
+                Log.i(TAG, "Runtime.nativeLoad hook installed (strict filter)");
             } else {
                 Log.e(TAG, "Runtime.nativeLoad not found!");
             }
 
         } catch (Throwable t) {
             Log.e(TAG, "nativeLoad hook failed: " + t.getMessage());
-        }
-
-        // Hook tambahan: android.os.SystemProperties atau cara lain Pairip
-        // cek environment — block akses ke /proc/self/maps via syscall jika bisa
-        hookDlopenPath();
-    }
-
-    private void hookDlopenPath() {
-        // Hook System.loadLibrary sebagai fallback
-        try {
-            XposedHelpers.findAndHookMethod(
-                System.class, "loadLibrary",
-                String.class,
-                new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        String lib = (String) param.args[0];
-                        if (lib != null && lib.contains("pairipcore")) {
-                            param.setResult(null);
-                            Log.i(TAG, "System.loadLibrary BLOCKED: " + lib);
-                        }
-                    }
-                }
-            );
-            Log.i(TAG, "System.loadLibrary hook installed");
-        } catch (Throwable t) {
-            Log.e(TAG, "System.loadLibrary hook failed: " + t.getMessage());
-        }
-
-        // Hook Runtime.loadLibrary0
-        try {
-            XposedHelpers.findAndHookMethod(
-                Runtime.class, "loadLibrary0",
-                ClassLoader.class, String.class,
-                new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        String lib = (String) param.args[1];
-                        if (lib != null && lib.contains("pairipcore")) {
-                            param.setResult(null);
-                            Log.i(TAG, "Runtime.loadLibrary0 BLOCKED: " + lib);
-                        }
-                    }
-                }
-            );
-            Log.i(TAG, "Runtime.loadLibrary0 hook installed");
-        } catch (Throwable t) {
-            Log.e(TAG, "Runtime.loadLibrary0 hook failed: " + t.getMessage());
         }
     }
 }

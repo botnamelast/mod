@@ -10,18 +10,22 @@ import java.lang.reflect.Method;
 
 public class ZygoteInit implements IXposedHookZygoteInit {
 
-    private static final String TAG        = "GeminX";
-    private static final String TARGET_PKG = "com.xd.SettlementSurvival.gp.global";
+    private static final String TAG = "GeminX";
 
     @Override
     public void initZygote(StartupParam startupParam) {
-        Log.i(TAG, "initZygote called — hooking nativeLoad early");
+        Log.i(TAG, "initZygote called");
 
-        // PENTING: initZygote berjalan di Zygote process yang di-share semua app.
-        // JANGAN hook System.loadLibrary atau loadLibrary0 di sini karena akan
-        // mempengaruhi semua app dan bisa crash system!
-        // Satu-satunya yang aman adalah hook Runtime.nativeLoad dengan filter KETAT.
+        // Load native bypass — ini install dlopen hook via __attribute__((constructor))
+        // yang otomatis jalan saat .so di-load, sebelum Pairip sempat dimuat
+        try {
+            NativeBypass.install();
+            Log.i(TAG, "NativeBypass.install() called, loaded=" + NativeBypass.isLoaded());
+        } catch (Throwable t) {
+            Log.e(TAG, "NativeBypass failed: " + t.getMessage());
+        }
 
+        // Tetap pasang nativeLoad hook sebagai lapisan kedua
         try {
             Method nativeLoad = null;
             for (Method m : Runtime.class.getDeclaredMethods()) {
@@ -37,21 +41,14 @@ public class ZygoteInit implements IXposedHookZygoteInit {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
                         String filename = (String) param.args[0];
-                        // Filter SANGAT KETAT — hanya block pairipcore di package target
-                        if (filename != null
-                                && filename.contains("pairipcore")
-                                && filename.contains(TARGET_PKG.replace(".", "/"))) {
+                        if (filename != null && filename.contains("pairipcore")) {
                             Log.i(TAG, "nativeLoad BLOCKED: " + filename);
-                            // nativeLoad return String: null = sukses, string = error msg
                             param.setResult(null);
                         }
                     }
                 });
-                Log.i(TAG, "Runtime.nativeLoad hook installed (strict filter)");
-            } else {
-                Log.e(TAG, "Runtime.nativeLoad not found!");
+                Log.i(TAG, "nativeLoad hook installed (backup layer)");
             }
-
         } catch (Throwable t) {
             Log.e(TAG, "nativeLoad hook failed: " + t.getMessage());
         }

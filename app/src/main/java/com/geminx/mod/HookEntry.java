@@ -49,45 +49,81 @@ public class HookEntry implements IXposedHookLoadPackage {
     }
 
     private void hookPairip(ClassLoader cl) {
-        // Hook com.pairip.application.Application.onCreate
-        // Ini mencegah Pairip init sebelum scan dimulai
+        // Strategy: Hook System.loadLibrary untuk intercept saat
+        // libpairipcore.so di-load, lalu patch JNI_OnLoad / ExecuteProgram
+
+        // Hook 1: Runtime.loadLibrary0 — dipanggil saat System.loadLibrary
         try {
             XposedHelpers.findAndHookMethod(
-                "com.pairip.application.Application",
-                cl,
+                "java.lang.Runtime", cl,
+                "loadLibrary0",
+                ClassLoader.class, String.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        String libName = (String) param.args[1];
+                        if (libName != null && libName.contains("pairipcore")) {
+                            // Block load library Pairip
+                            param.setResult(null);
+                            Log.i(TAG, "Pairip loadLibrary BLOCKED: " + libName);
+                        }
+                    }
+                }
+            );
+            Log.i(TAG, "loadLibrary hook installed");
+        } catch (Throwable t) {
+            Log.e(TAG, "loadLibrary hook failed: " + t.getMessage());
+        }
+
+        // Hook 2: System.load (full path)
+        try {
+            XposedHelpers.findAndHookMethod(
+                "java.lang.System", cl,
+                "load", String.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        String path = (String) param.args[0];
+                        if (path != null && path.contains("pairipcore")) {
+                            param.setResult(null);
+                            Log.i(TAG, "Pairip System.load BLOCKED: " + path);
+                        }
+                    }
+                }
+            );
+        } catch (Throwable t) {
+            Log.e(TAG, "System.load hook failed: " + t.getMessage());
+        }
+
+        // Hook 3: com.pairip.application.Application - block onCreate & attachBaseContext
+        try {
+            XposedHelpers.findAndHookMethod(
+                "com.pairip.application.Application", cl,
+                "attachBaseContext", android.content.Context.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        param.setResult(null);
+                        Log.i(TAG, "Pairip attachBaseContext BLOCKED");
+                    }
+                }
+            );
+            XposedHelpers.findAndHookMethod(
+                "com.pairip.application.Application", cl,
                 "onCreate",
                 new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
-                        // Skip Pairip init — langsung return
                         param.setResult(null);
-                        Log.i(TAG, "Pairip onCreate blocked!");
+                        Log.i(TAG, "Pairip onCreate BLOCKED");
                     }
                 }
             );
-            Log.i(TAG, "Pairip hook installed");
         } catch (Throwable t) {
-            Log.e(TAG, "Pairip hook failed: " + t.getMessage());
+            Log.e(TAG, "Pairip Application hook failed: " + t.getMessage());
         }
 
-        // Hook attachBaseContext juga untuk double protection
-        try {
-            XposedHelpers.findAndHookMethod(
-                "com.pairip.application.Application",
-                cl,
-                "attachBaseContext",
-                android.content.Context.class,
-                new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        param.setResult(null);
-                        Log.i(TAG, "Pairip attachBaseContext blocked!");
-                    }
-                }
-            );
-        } catch (Throwable t) {
-            Log.e(TAG, "Pairip attachBaseContext hook failed: " + t.getMessage());
-        }
+        Log.i(TAG, "All Pairip hooks installed");
     }
 
     private void hookInit(ClassLoader cl) {

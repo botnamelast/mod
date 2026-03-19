@@ -46,6 +46,7 @@ public class HookEntry implements IXposedHookLoadPackage {
             hookCarSpeedChange(lpp.classLoader);
             hookGlobalTimeScale(lpp.classLoader);
             hookMiniCarValue(lpp.classLoader);
+            hookApplicationEntry(lpp.classLoader);
         } catch (Throwable t) {
             Log.e(TAG, "handleLoadPackage error", t);
         }
@@ -257,14 +258,50 @@ public class HookEntry implements IXposedHookLoadPackage {
         }
     }
 
+    // ── Hook Application entry untuk start overlay lebih awal ─────────────────
+    private void hookApplicationEntry(ClassLoader cl) {
+        // Hook Application.onCreate sebagai trigger paling awal
+        try {
+            XposedHelpers.findAndHookMethod(
+                "android.app.Application", cl,
+                "onCreate",
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!hooksReady) {
+                            hooksReady = true;
+                            moduleActive = true;
+                            Log.i(TAG, "Application.onCreate — starting overlay");
+                            android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+                            h.postDelayed(() -> {
+                                try {
+                                    android.content.Context ctx = (android.content.Context) param.thisObject;
+                                    android.content.Intent i = new android.content.Intent();
+                                    i.setClassName("com.flashmod.mod", "com.flashmod.mod.ModOverlay");
+                                    ctx.startService(i);
+                                    Log.i(TAG, "Overlay service started via Application");
+                                } catch (Throwable t) {
+                                    Log.e(TAG, "startOverlay via Application failed: " + t.getMessage());
+                                }
+                            }, 3000); // delay 3 detik biar game selesai load dulu
+                        }
+                    }
+                }
+            );
+            Log.i(TAG, "Application.onCreate hook installed");
+        } catch (Throwable t) {
+            Log.e(TAG, "Application.onCreate hook failed: " + t.getMessage());
+        }
+    }
+
     // ── Start Overlay ─────────────────────────────────────────────────────────
     private void startOverlay(Context ctx) {
         try {
-            Intent i = new Intent(ctx, ModOverlay.class);
+            android.content.Intent i = new android.content.Intent();
+            i.setClassName("com.flashmod.mod", "com.flashmod.mod.ModOverlay");
             ctx.startService(i);
             Log.i(TAG, "Overlay service started");
         } catch (Throwable t) {
-            // Coba cara lain
             Log.e(TAG, "startOverlay failed: " + t.getMessage());
         }
     }

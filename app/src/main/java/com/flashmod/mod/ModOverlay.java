@@ -221,8 +221,9 @@ public class ModOverlay extends Service {
     // ── Toggle row ────────────────────────────────────────────────────────────
     private TextView makeToggleRow(String label, boolean state, int color, View.OnClickListener l) {
         TextView btn = new TextView(this);
-        updateToggle(btn, state, color);
+        btn.setTag(label); // simpan label asli di tag
         btn.setText((state ? "● ON  " : "○ OFF ") + label);
+        updateToggle(btn, state, color);
         btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         btn.setPadding(dp(12), dp(10), dp(12), dp(10));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -233,14 +234,11 @@ public class ModOverlay extends Service {
     }
 
     private void updateToggle(TextView btn, boolean on, int color) {
-        String text = btn.getText().toString();
-        // Update prefix
-        if (text.length() > 5) {
-            String label = text.substring(5).trim();
-            btn.setText((on ? "● ON  " : "○ OFF ") + label);
-        }
+        String label = btn.getTag() != null ? (String) btn.getTag() : "";
+        btn.setText((on ? "● ON  " : "○ OFF ") + label);
         btn.setTextColor(on ? color : C_MUTED);
-        btn.setBackground(makeRoundRect(on ? (color & 0x22FFFFFF | 0x22000000) : C_ITEM_BG, dp(8)));
+        int bgColor = on ? (color & 0x00FFFFFF | 0x33000000) : C_ITEM_BG;
+        btn.setBackground(makeRoundRect(bgColor, dp(8)));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
